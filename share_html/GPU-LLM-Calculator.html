@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU Hosting Calculator</title>
+<style>
+  :root {
+    --ink:#0f172a; --ink-2:#475569; --ink-3:#64748b;
+    --line:#e2e8f0; --surface:#ffffff; --surface-2:#f8fafc;
+    --accent:#0ea5e9; --good:#059669; --warn:#d97706; --bad:#dc2626;
+  }
+  * { box-sizing:border-box }
+  html,body { margin:0; padding:0; background:#f1f5f9; color:var(--ink);
+              font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1240px; margin:24px auto; padding:0 20px 40px; }
+  h1 { font-size:17px; margin:0 0 4px; font-weight:700; letter-spacing:-0.01em; }
+  .sub { color:var(--ink-3); font-size:12px; margin-bottom:18px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px;
+          padding:14px 16px; margin-bottom:14px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .row { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; }
+  .fld { display:flex; flex-direction:column; gap:3px; min-width:118px; }
+  .fld > label { font-size:10.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; }
+  select, input[type=number], input[type=text] {
+    font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px;
+    background:var(--surface); color:var(--ink); }
+  select:focus, input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  input[type=range] { accent-color:var(--accent); padding:0; }
+  .w-num { width:92px; }
+  .hdr { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+         font-size:11.5px; color:var(--ink-2); white-space:pre-wrap; margin:0 0 10px; }
+  .hdr strong { color:var(--ink); }
+  .tblscroll { max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  thead th { position:sticky; top:0; background:var(--surface-2); color:var(--ink-3);
+             font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+             padding:7px 10px; text-align:right; border-bottom:1px solid var(--line); cursor:pointer; user-select:none; }
+  thead th:hover { color:var(--ink); }
+  tbody td { padding:5px 10px; text-align:right; border-top:1px solid #f1f5f9;
+             font-variant-numeric:tabular-nums; }
+  tbody tr:first-child td { border-top:none }
+  tbody tr:hover { background:#f1f9ff }
+  td.l, th.l { text-align:left }
+  .pos { color:var(--good); font-weight:600 }
+  .neg { color:var(--bad);  font-weight:600 }
+  .psz { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:600; }
+  .psz.my  { background:#fff4d6; color:#92400e }
+  .psz.pub { background:#e8f1fc; color:#1e3a8a }
+  .foot { color:var(--ink-3); font-size:11px; margin-top:8px; }
+  .nn { color:var(--ink-3) }   /* N/A cell */
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GPU Hosting Calculator</h1>
+  <div class="sub">§1 mirror from <code>GPU-LLM-v2-Analytics.ipynb</code> — revenue &amp; break-even for 5 models × your workload, against the live price grid. Values update on input.</div>
+
+  <div class="card">
+    <div class="row">
+      <div class="fld"><label>Model</label>
+        <select id="w_model"></select></div>
+      <div class="fld"><label>My workload (ISL)</label>
+        <select id="w_isl">
+          <option value="25000" selected>ISL 25k</option>
+          <option value="13000">ISL 13k</option>
+        </select></div>
+      <div class="fld"><label>OSL tokens</label>
+        <input class="w-num" type="number" id="w_osl" min="128" max="4096" step="1" value="512"></div>
+      <div class="fld"><label>KV hit %</label>
+        <input class="w-num" type="number" id="w_kv" min="0" max="100" step="1" value="60"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="fld"><label>Fresh-in $/1M</label>
+        <input class="w-num" type="number" id="w_pin" step="0.01" value="0.15"></div>
+      <div class="fld"><label>Cached-in $/1M</label>
+        <input class="w-num" type="number" id="w_pca" step="0.001" value="0.03"></div>
+      <div class="fld"><label>Out $/1M</label>
+        <input class="w-num" type="number" id="w_pou" step="0.01" value="0.50"></div>
+      <div class="fld"><label>Hardware</label>
+        <select id="w_gpu"></select></div>
+      <div class="fld"><label>Price source</label>
+        <select id="w_price">
+          <option value="both" selected>both</option>
+          <option value="my_quotes">my offers</option>
+          <option value="public_market">public market</option>
+        </select></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="fld"><label>GPUs (nodes)</label>
+        <input class="w-num" type="number" id="w_fleet" min="1" step="1" value="16"></div>
+      <div class="fld"><label>Window (days)</label>
+        <input class="w-num" type="number" id="w_horizon" min="1" step="1" value="7"></div>
+      <div class="fld" style="min-width:190px"><label>GPU utilisation % · <span id="v_util">100</span></label>
+        <input type="range" id="w_util" min="10" max="100" step="5" value="100"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hdr" id="hd"></div>
+    <div class="tblscroll">
+      <table id="tbl">
+        <thead><tr>
+          <th class="l" data-k="option_id">offer</th>
+          <th class="l" data-k="gpu_class">gpu</th>
+          <th class="l" data-k="price_src">src</th>
+          <th data-k="profit_ph">profit $/GPU·h</th>
+          <th data-k="margin_pct">margin %</th>
+          <th data-k="revenue_ph">revenue $/h</th>
+          <th data-k="profit_total">profit total</th>
+          <th data-k="cost_total">cost total</th>
+          <th data-k="revenue_total">revenue total</th>
+          <th data-k="be_lower">break-even util</th>
+          <th data-k="listed_rate">list $/h</th>
+          <th data-k="hw_scale">hw ×</th>
+          <th data-k="fresh_in_tps">fresh in t/s</th>
+          <th data-k="cached_in_tps">cached in t/s</th>
+          <th data-k="out_tps">out t/s</th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+    <div class="foot" id="ft"></div>
+  </div>
+</div>
+
+<script id="payload" type="application/json">{"PRICES":{"glm-5.3-flash":{"pin":0.15,"pca":0.03,"pou":0.5},"kimi-k3":{"pin":3.0,"pca":0.3,"pou":15.0},"deepseek-v4.1-flash":{"pin":0.15,"pca":0.003,"pou":0.6},"hy4-preview":{"pin":0.8,"pca":0.038,"pou":2.48},"mimo-v2.6-flash":{"pin":0.14,"pca":0.003,"pou":0.28}},"HW_SCALE":{"glm-5.3-flash":{"b300":1.0,"gb300":1.12,"b200":0.454,"gb200":0.187,"h200":0.049,"mi355x":0.493,"mi325x":0.026,"h100":0.041},"kimi-k3":{"b300":1.0,"gb300":5.877,"b200":0.988,"gb200":1.068,"h200":0.012,"mi355x":1.213,"mi325x":0.669,"h100":0.063},"deepseek-v4.1-flash":{"b300":1.0,"gb300":5.936,"b200":0.883,"gb200":0.831,"h200":0.159,"mi355x":0.426,"mi325x":0.09,"h100":0.041},"hy4-preview":{"b300":1.0,"gb300":1.132,"b200":0.801,"gb200":0.801,"h200":0.215,"mi355x":0.878,"mi325x":0.0,"h100":0.0},"mimo-v2.6-flash":{"b300":1.0,"gb300":1.0,"b200":0.6,"gb200":0.55,"h200":0.1,"mi355x":0.5,"mi325x":0.08,"h100":0.06}},"GATES":{"25000":{"60":{"128":[21957.5,112.4],"256":[19472.5,199.4],"512":[21998.0,450.5],"1024":[5707.5,233.7]},"90":{"128":[52767.5,270.2],"256":[34350.0,351.7],"512":[10750.0,220.1],"1024":[2905.0,119.0]},"92":{"128":[46405.0,237.6],"256":[35470.0,363.2],"512":[18957.5,388.3],"1024":[4917.5,201.5]}},"13000":{"60":{"128":[20718.1,204.0],"256":[18848.7,371.2],"512":[10095.8,397.6],"1024":[3006.9,236.8]},"89":{"128":[33507.5,329.9],"256":[31311.8,616.6],"512":[18250.7,718.8],"1024":[3181.1,250.6]}}},"ANCHOR":{"kimi-k3":{"in_tps":12479.0,"out_tps":87.6},"deepseek-v4.1-flash":{"in_tps":441986.0,"out_tps":3170.5},"hy4-preview":{"in_tps":54484.0,"out_tps":379.4},"mimo-v2.6-flash":{"in_tps":33629.0,"out_tps":250.0}},"KV_GAIN_PTS":{"60,128":1.0,"60,256":1.0,"60,512":1.0,"60,1024":1.0,"90,128":2.4,"90,256":1.76,"90,512":0.87,"90,1024":0.51},"KV_GAIN_MODEL_PRIOR":{"kimi-k3":1.3,"deepseek-v4.1-flash":1.0,"hy4-preview":1.0,"mimo-v2.6-flash":0.5},"MODEL_LABELS":{"glm-5.3-flash":"GLM-5.3-Flash (measured)","kimi-k3":"Kimi-K3 (public anchor)","deepseek-v4.1-flash":"DeepSeek-V4.1-Flash","hy4-preview":"Tencent Hy4-preview","mimo-v2.6-flash":"Xiaomi MiMo-V2.6-Flash"},"GPU_LABELS":["gb300","b300","mi355x","b200","gb200","h200","mi325x","h100"],"OPTIONS":[{"option_id":"B300-AWS-CapacityBlock","gpu_class":"b300","rental_term":"reserved","listed_rate":16.146,"eff_cost_ph":16.146,"price_src":"public_market"},{"option_id":"B200-AWS-CapacityBlock","gpu_class":"b200","rental_term":"reserved","listed_rate":14.208,"eff_cost_ph":14.208,"price_src":"public_market"},{"option_id":"GB200-AWS-CapacityBlock","gpu_class":"gb200","rental_term":"reserved","listed_rate":10.582,"eff_cost_ph":10.582,"price_src":"public_market"},{"option_id":"H200-AWS-CapacityBlock","gpu_class":"h200","rental_term":"reserved","listed_rate":6.866,"eff_cost_ph":6.866,"price_src":"public_market"},{"option_id":"GB200-CoreWeave-OD","gpu_class":"gb200","rental_term":"on_demand","listed_rate":10.5,"eff_cost_ph":10.5,"price_src":"public_market"},{"option_id":"B200-CoreWeave-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":8.6,"eff_cost_ph":8.6,"price_src":"public_market"},{"option_id":"B200-CoreWeave-Spot","gpu_class":"b200","rental_term":"spot","listed_rate":4.26,"eff_cost_ph":4.26,"price_src":"public_market"},{"option_id":"H200-CoreWeave-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":6.31,"eff_cost_ph":6.31,"price_src":"public_market"},{"option_id":"B300-CoreWeave-Spot","gpu_class":"b300","rental_term":"spot","listed_rate":4.48,"eff_cost_ph":4.48,"price_src":"public_market"},{"option_id":"B200-Lambda-Res16","gpu_class":"b200","rental_term":"reserved","listed_rate":9.86,"eff_cost_ph":9.86,"price_src":"public_market"},{"option_id":"B200-Lambda-Res256","gpu_class":"b200","rental_term":"reserved","listed_rate":8.87,"eff_cost_ph":8.87,"price_src":"public_market"},{"option_id":"B200-Lambda-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":6.99,"eff_cost_ph":6.99,"price_src":"public_market"},{"option_id":"B300-Together-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":9.99,"eff_cost_ph":9.99,"price_src":"public_market"},{"option_id":"B200-Together-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":8.19,"eff_cost_ph":8.19,"price_src":"public_market"},{"option_id":"B200-Together-Res","gpu_class":"b200","rental_term":"reserved","listed_rate":6.79,"eff_cost_ph":6.79,"price_src":"public_market"},{"option_id":"H200-Together-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":5.99,"eff_cost_ph":5.99,"price_src":"public_market"},{"option_id":"H200-Together-Res","gpu_class":"h200","rental_term":"reserved","listed_rate":3.99,"eff_cost_ph":3.99,"price_src":"public_market"},{"option_id":"B300-RunPod-SecOD","gpu_class":"b300","rental_term":"on_demand","listed_rate":8.99,"eff_cost_ph":8.99,"price_src":"public_market"},{"option_id":"B200-RunPod-SecOD","gpu_class":"b200","rental_term":"on_demand","listed_rate":7.99,"eff_cost_ph":7.99,"price_src":"public_market"},{"option_id":"H200-RunPod-SecOD","gpu_class":"h200","rental_term":"on_demand","listed_rate":5.29,"eff_cost_ph":5.29,"price_src":"public_market"},{"option_id":"B300-Nebius-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":9.5,"eff_cost_ph":9.5,"price_src":"public_market"},{"option_id":"B200-Nebius-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":8.5,"eff_cost_ph":8.5,"price_src":"public_market"},{"option_id":"H200-Nebius-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":5.4,"eff_cost_ph":5.4,"price_src":"public_market"},{"option_id":"GB300-OCI-OD","gpu_class":"gb300","rental_term":"on_demand","listed_rate":18.0,"eff_cost_ph":18.0,"price_src":"public_market"},{"option_id":"B300-OCI-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":15.0,"eff_cost_ph":15.0,"price_src":"public_market"},{"option_id":"B200-OCI-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":14.0,"eff_cost_ph":14.0,"price_src":"public_market"},{"option_id":"H200-OCI-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":10.0,"eff_cost_ph":10.0,"price_src":"public_market"},{"option_id":"B300-Crusoe-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":9.9,"eff_cost_ph":9.9,"price_src":"public_market"},{"option_id":"H200-Crusoe-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":4.29,"eff_cost_ph":4.29,"price_src":"public_market"},{"option_id":"MI355X-Crusoe-OD","gpu_class":"mi355x","rental_term":"on_demand","listed_rate":7.7,"eff_cost_ph":7.7,"price_src":"public_market"},{"option_id":"GB300-Verda-OD","gpu_class":"gb300","rental_term":"on_demand","listed_rate":12.17,"eff_cost_ph":12.17,"price_src":"public_market"},{"option_id":"B300-Verda-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":10.58,"eff_cost_ph":10.58,"price_src":"public_market"},{"option_id":"B200-Verda-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":8.272,"eff_cost_ph":8.272,"price_src":"public_market"},{"option_id":"H200-Verda-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":5.83,"eff_cost_ph":5.83,"price_src":"public_market"},{"option_id":"B300-Hyperstack-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":7.4,"eff_cost_ph":7.4,"price_src":"public_market"},{"option_id":"B200-Hyperstack-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":6.0,"eff_cost_ph":6.0,"price_src":"public_market"},{"option_id":"H200-Hyperstack-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":3.99,"eff_cost_ph":3.99,"price_src":"public_market"},{"option_id":"B300-Latitude-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":8.0,"eff_cost_ph":8.0,"price_src":"public_market"},{"option_id":"GB200-GMI-OD","gpu_class":"gb200","rental_term":"on_demand","listed_rate":8.0,"eff_cost_ph":8.0,"price_src":"public_market"},{"option_id":"B200-GMI-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":5.0,"eff_cost_ph":5.0,"price_src":"public_market"},{"option_id":"H200-GMI-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":3.2,"eff_cost_ph":3.2,"price_src":"public_market"},{"option_id":"B200-GCP-A4-Res","gpu_class":"b200","rental_term":"reserved","listed_rate":4.28,"eff_cost_ph":4.28,"price_src":"public_market"},{"option_id":"B300-Modal-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":7.1,"eff_cost_ph":7.1,"price_src":"public_market"},{"option_id":"B200-Modal-OD","gpu_class":"b200","rental_term":"on_demand","listed_rate":6.25,"eff_cost_ph":6.25,"price_src":"public_market"},{"option_id":"H200-Modal-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":4.54,"eff_cost_ph":4.54,"price_src":"public_market"},{"option_id":"B300-Spheron-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":12.42,"eff_cost_ph":12.42,"price_src":"public_market"},{"option_id":"H200-Spheron-OD","gpu_class":"h200","rental_term":"on_demand","listed_rate":4.8,"eff_cost_ph":4.8,"price_src":"public_market"},{"option_id":"B300-Fireworks-OD","gpu_class":"b300","rental_term":"on_demand","listed_rate":15.0,"eff_cost_ph":15.0,"price_src":"public_market"},{"option_id":"GB300-Fireworks-OD","gpu_class":"gb300","rental_term":"on_demand","listed_rate":20.0,"eff_cost_ph":20.0,"price_src":"public_market"},{"option_id":"MI355X-OCI-OD","gpu_class":"mi355x","rental_term":"on_demand","listed_rate":8.6,"eff_cost_ph":8.6,"price_src":"public_market"},{"option_id":"MI355X-TensorWave-quote","gpu_class":"mi355x","rental_term":"on_demand","listed_rate":2.95,"eff_cost_ph":2.95,"price_src":"public_market"},{"option_id":"MI355X-Vultr-preemptible","gpu_class":"mi355x","rental_term":"preemptible","listed_rate":2.59,"eff_cost_ph":2.59,"price_src":"public_market"},{"option_id":"B200-ondemand-DeepInfra-B200-On-demand-\u2014-$4.89-e","gpu_class":"b200","rental_term":"on_demand","listed_rate":4.89,"eff_cost_ph":4.89,"price_src":"my_quotes"},{"option_id":"B200-ondemand-RunPod-B200-Community-Cloud-Live-S","gpu_class":"b200","rental_term":"on_demand","listed_rate":5.98,"eff_cost_ph":5.98,"price_src":"my_quotes"},{"option_id":"B200-ondemand-RunPod-B200-Secure-Cloud-Live-Spot","gpu_class":"b200","rental_term":"on_demand","listed_rate":7.99,"eff_cost_ph":7.99,"price_src":"my_quotes"},{"option_id":"B300-3year-hosted.ai-\u2014-B300-Dallas-\u2014-36M-@-$4","gpu_class":"b300","rental_term":"3_year","listed_rate":4.6,"eff_cost_ph":4.6,"price_src":"my_quotes"},{"option_id":"B300-3year-Clarity-\u2014-B300-Canada-\u2014-8-nodes-\u2014-","gpu_class":"b300","rental_term":"3_year","listed_rate":4.74,"eff_cost_ph":4.74,"price_src":"my_quotes"},{"option_id":"B300-3year-hosted.ai-\u2014-B300-Dallas-\u2014-32-nodes","gpu_class":"b300","rental_term":"3_year","listed_rate":4.75,"eff_cost_ph":4.75,"price_src":"my_quotes"},{"option_id":"B300-3year-Clarity-\u2014-B300-Canada-\u2014-8-nodes-\u2014--2","gpu_class":"b300","rental_term":"3_year","listed_rate":4.78,"eff_cost_ph":4.78,"price_src":"my_quotes"},{"option_id":"B300-3year-Ornn-\u2014-B300-Sweden-\u2014-12-nodes-\u2014-36","gpu_class":"b300","rental_term":"3_year","listed_rate":4.8,"eff_cost_ph":4.8,"price_src":"my_quotes"},{"option_id":"B300-1year-Clarity-\u2014-B300-Canada-\u2014-1-node-\u2014-1","gpu_class":"b300","rental_term":"1_year","listed_rate":4.97,"eff_cost_ph":4.97,"price_src":"my_quotes"},{"option_id":"B300-2year-hosted.ai-\u2014-B300-Dallas-\u2014-32-nodes","gpu_class":"b300","rental_term":"2_year","listed_rate":5.5,"eff_cost_ph":5.5,"price_src":"my_quotes"},{"option_id":"B300-ondemand-DeepInfra-B300-On-demand-\u2014-$5.89-e","gpu_class":"b300","rental_term":"on_demand","listed_rate":5.89,"eff_cost_ph":5.89,"price_src":"my_quotes"},{"option_id":"B300-ondemand-DigitalOcean-B300-Spot-\u2014-Oct-23,-2","gpu_class":"b300","rental_term":"on_demand","listed_rate":6.17,"eff_cost_ph":6.17,"price_src":"my_quotes"},{"option_id":"B300-ondemand-RunPod-B300-Community-Cloud-Live-S","gpu_class":"b300","rental_term":"on_demand","listed_rate":6.94,"eff_cost_ph":6.94,"price_src":"my_quotes"},{"option_id":"B300-ondemand-Verda-B300-VM","gpu_class":"b300","rental_term":"on_demand","listed_rate":7.5,"eff_cost_ph":7.5,"price_src":"my_quotes"},{"option_id":"B300-ondemand-Latitude.sh-B300-Hourly-Live-Spot-","gpu_class":"b300","rental_term":"on_demand","listed_rate":8.0,"eff_cost_ph":8.0,"price_src":"my_quotes"},{"option_id":"B300-ondemand-RunPod-B300-Secure-Cloud-Live-Spot","gpu_class":"b300","rental_term":"on_demand","listed_rate":8.99,"eff_cost_ph":8.99,"price_src":"my_quotes"},{"option_id":"GB300-3year-Verda-GB300-36M/50%--@-$-3.95-Marc","gpu_class":"gb300","rental_term":"3_year","listed_rate":3.95,"eff_cost_ph":3.95,"price_src":"my_quotes"},{"option_id":"GB300-3year-Verda-GB300-36M/25%--@-$-4.2-March","gpu_class":"gb300","rental_term":"3_year","listed_rate":4.2,"eff_cost_ph":4.2,"price_src":"my_quotes"},{"option_id":"GB300-3year-YOTTA-GB300--\u2014-36M-@-$4.8","gpu_class":"gb300","rental_term":"3_year","listed_rate":4.8,"eff_cost_ph":4.8,"price_src":"my_quotes"},{"option_id":"GB300-3year-Ornn-\u2014-GB300-NVL72-\u2014-US-East-\u2014-864","gpu_class":"gb300","rental_term":"3_year","listed_rate":4.85,"eff_cost_ph":4.85,"price_src":"my_quotes"},{"option_id":"GB300-5year-Compute-Exchange-\u2014-GB300-NVL72-\u2014-U-2","gpu_class":"gb300","rental_term":"5_year","listed_rate":4.94,"eff_cost_ph":4.94,"price_src":"my_quotes"},{"option_id":"GB300-3year-hosted.ai-GB300-MA--36M/30%--@-$-4","gpu_class":"gb300","rental_term":"3_year","listed_rate":4.95,"eff_cost_ph":4.95,"price_src":"my_quotes"},{"option_id":"GB300-3year-YOTTA-GB300--\u2014-36M-@-$5.00","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.0,"eff_cost_ph":5.0,"price_src":"my_quotes"},{"option_id":"GB300-3year-Turboscale-GB300-\u2014-36M-/-20%-@-$5.","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.1,"eff_cost_ph":5.1,"price_src":"my_quotes"},{"option_id":"GB300-5year-vast.ai-GB300-Ohio-60M-@-$5.10--pa","gpu_class":"gb300","rental_term":"5_year","listed_rate":5.1,"eff_cost_ph":5.1,"price_src":"my_quotes"},{"option_id":"GB300-5year-Compute-Exchange-\u2014-GB300-NVL72-\u2014-U","gpu_class":"gb300","rental_term":"5_year","listed_rate":5.1,"eff_cost_ph":5.1,"price_src":"my_quotes"},{"option_id":"GB300-5year-1Legion-GB300-\u2014-60M-@-$5.20","gpu_class":"gb300","rental_term":"5_year","listed_rate":5.2,"eff_cost_ph":5.2,"price_src":"my_quotes"},{"option_id":"GB300-3year-Axe-GB300-NVL72-\u2014-36M-/-30%-@-$5.2","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.25,"eff_cost_ph":5.25,"price_src":"my_quotes"},{"option_id":"GB300-3year-Turboscale-GB300-\u2014-36M-/-15%-@-$5.","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.3,"eff_cost_ph":5.3,"price_src":"my_quotes"},{"option_id":"GB300-5year-vast.ai-GB300-Ohio-48M-@-$5.40--pa","gpu_class":"gb300","rental_term":"5_year","listed_rate":5.4,"eff_cost_ph":5.4,"price_src":"my_quotes"},{"option_id":"GB300-2year-Axe-GB300-NVL72-\u2014-24M-/-40%-@-$5.4","gpu_class":"gb300","rental_term":"2_year","listed_rate":5.4,"eff_cost_ph":5.4,"price_src":"my_quotes"},{"option_id":"GB300-3year-VESSL-GB300-NVL72-US-East-\u2014-36M-/-","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.44,"eff_cost_ph":5.44,"price_src":"my_quotes"},{"option_id":"GB300-5year-Nebius-\u2014-GB300-NVL72-\u2014-1-rack-\u2014-48","gpu_class":"gb300","rental_term":"5_year","listed_rate":5.7,"eff_cost_ph":5.7,"price_src":"my_quotes"},{"option_id":"GB300-2year-VESSL-GB300-NVL72-US-East-\u2014-24M-/-","gpu_class":"gb300","rental_term":"2_year","listed_rate":5.84,"eff_cost_ph":5.84,"price_src":"my_quotes"},{"option_id":"GB300-2year-Turboscale-GB300-\u2014-24M-@-$5.90-(Se","gpu_class":"gb300","rental_term":"2_year","listed_rate":5.9,"eff_cost_ph":5.9,"price_src":"my_quotes"},{"option_id":"GB300-2year-hosted.ai-GB300-MA--24M/30%-@-$-5.","gpu_class":"gb300","rental_term":"2_year","listed_rate":5.95,"eff_cost_ph":5.95,"price_src":"my_quotes"},{"option_id":"GB300-3year-vast.ai-GB300-Ohio-36M-@-$5.95---p","gpu_class":"gb300","rental_term":"3_year","listed_rate":5.95,"eff_cost_ph":5.95,"price_src":"my_quotes"},{"option_id":"GB300-3year-1Legion-GB300-\u2014-36M-@-$6.00","gpu_class":"gb300","rental_term":"3_year","listed_rate":6.0,"eff_cost_ph":6.0,"price_src":"my_quotes"},{"option_id":"GB300-3year-NextGen-Cloud-\u2014-GB300-NVL72-\u2014-1-ra","gpu_class":"gb300","rental_term":"3_year","listed_rate":6.0,"eff_cost_ph":6.0,"price_src":"my_quotes"},{"option_id":"GB300-1year-VESSL-GB300-NVL72-US-East-\u2014-12M-/-","gpu_class":"gb300","rental_term":"1_year","listed_rate":6.27,"eff_cost_ph":6.27,"price_src":"my_quotes"},{"option_id":"GB300-3year-Compute-Exchange-\u2014-GB300-NVL72-\u2014-U","gpu_class":"gb300","rental_term":"3_year","listed_rate":6.5,"eff_cost_ph":6.5,"price_src":"my_quotes"},{"option_id":"GB300-3year-Nebius-\u2014-GB300-NVL72-\u2014-1-rack-\u2014-36","gpu_class":"gb300","rental_term":"3_year","listed_rate":6.7,"eff_cost_ph":6.7,"price_src":"my_quotes"},{"option_id":"GB300-2year-Nebius-\u2014-GB300-NVL72-\u2014-1-rack-\u2014-24","gpu_class":"gb300","rental_term":"2_year","listed_rate":8.25,"eff_cost_ph":8.25,"price_src":"my_quotes"},{"option_id":"H100-ondemand-GMI-H100-\u2014-1M-renewal-@-$1.80-(Sep","gpu_class":"h100","rental_term":"on_demand","listed_rate":1.8,"eff_cost_ph":1.8,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Vutlr-H100","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.25,"eff_cost_ph":2.25,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Exabits-H100-VM","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.4,"eff_cost_ph":2.4,"price_src":"my_quotes"},{"option_id":"H100-1year-PhysionLabs-4-6-H100-nodes","gpu_class":"h100","rental_term":"1_year","listed_rate":2.4,"eff_cost_ph":2.4,"price_src":"my_quotes"},{"option_id":"H100-1year-andromeda-H100-US-1Y","gpu_class":"h100","rental_term":"1_year","listed_rate":2.6,"eff_cost_ph":2.6,"price_src":"my_quotes"},{"option_id":"H100-ondemand-RunPod-H100-Community-Cloud-\u2014-SXM-","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.69,"eff_cost_ph":2.69,"price_src":"my_quotes"},{"option_id":"H100-ondemand-MassedCompute-H100","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.73,"eff_cost_ph":2.73,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Hyperbolic-H100-Live-Marketplace-R","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.89,"eff_cost_ph":2.89,"price_src":"my_quotes"},{"option_id":"H100-ondemand-DeepInfra-H100-On-demand-\u2014-$2.90-e","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.9,"eff_cost_ph":2.9,"price_src":"my_quotes"},{"option_id":"H100-1year-andromeda-H100-US-West-1Y","gpu_class":"h100","rental_term":"1_year","listed_rate":2.96,"eff_cost_ph":2.96,"price_src":"my_quotes"},{"option_id":"H100-ondemand-VESSL-H100-On-demand-(Sep-1)","gpu_class":"h100","rental_term":"on_demand","listed_rate":2.98,"eff_cost_ph":2.98,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Hyperstack-H100-VM","gpu_class":"h100","rental_term":"on_demand","listed_rate":3.2,"eff_cost_ph":3.2,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Latitude.sh-H100-Hourly-Live-Spot-","gpu_class":"h100","rental_term":"on_demand","listed_rate":3.37,"eff_cost_ph":3.37,"price_src":"my_quotes"},{"option_id":"H100-ondemand-Verda-H100-On-demand-\u2014-Oct-7,-2026","gpu_class":"h100","rental_term":"on_demand","listed_rate":3.48,"eff_cost_ph":3.48,"price_src":"my_quotes"},{"option_id":"H100-ondemand-RunPod-H100-Secure-Cloud-\u2014-SXM-Liv","gpu_class":"h100","rental_term":"on_demand","listed_rate":3.99,"eff_cost_ph":3.99,"price_src":"my_quotes"},{"option_id":"H200-1year-Compute-Exchange-\u2014-H200-South-Afri","gpu_class":"h200","rental_term":"1_year","listed_rate":3.3,"eff_cost_ph":3.3,"price_src":"my_quotes"},{"option_id":"H200-1year-Compute-Exchange-\u2014-H200-South-Afri-2","gpu_class":"h200","rental_term":"1_year","listed_rate":3.4,"eff_cost_ph":3.4,"price_src":"my_quotes"},{"option_id":"H200-1year-Compute-Exchange-\u2014-H200-South-Afri-4","gpu_class":"h200","rental_term":"1_year","listed_rate":3.4,"eff_cost_ph":3.4,"price_src":"my_quotes"},{"option_id":"H200-ondemand-DeepInfra-H200-On-demand-\u2014-$3.49-e","gpu_class":"h200","rental_term":"on_demand","listed_rate":3.49,"eff_cost_ph":3.49,"price_src":"my_quotes"},{"option_id":"H200-ondemand-Hyperbolic-H200-Live-Marketplace-R","gpu_class":"h200","rental_term":"on_demand","listed_rate":3.49,"eff_cost_ph":3.49,"price_src":"my_quotes"},{"option_id":"H200-1year-Compute-Exchange-\u2014-H200-South-Afri-3","gpu_class":"h200","rental_term":"1_year","listed_rate":3.5,"eff_cost_ph":3.5,"price_src":"my_quotes"},{"option_id":"H200-ondemand-RunPod-H200-Community-Cloud-Live-S","gpu_class":"h200","rental_term":"on_demand","listed_rate":3.59,"eff_cost_ph":3.59,"price_src":"my_quotes"},{"option_id":"H200-ondemand-RunPod-H200-Secure-Cloud-Live-Spot","gpu_class":"h200","rental_term":"on_demand","listed_rate":5.29,"eff_cost_ph":5.29,"price_src":"my_quotes"}]}</script>
+<script>
+'use strict';
+const P = JSON.parse(document.getElementById('payload').textContent);
+
+// ── maths, ported 1:1 from notebook cell 5 ──────────────────────────────────
+function kvGainAt(kv, osl, strength=1.0) {
+  const pts = P.KV_GAIN_PTS;
+  const kvs  = [...new Set(Object.keys(pts).map(k => +k.split(',')[0]))].sort((a,b)=>a-b);
+  const osls = [...new Set(Object.keys(pts).map(k => +k.split(',')[1]))].sort((a,b)=>a-b);
+  const kvC  = Math.max(kvs[0],  Math.min(kv,  kvs[kvs.length-1]));
+  const oslC = Math.max(osls[0], Math.min(osl, osls[osls.length-1]));
+  const kvLo = Math.max(...kvs.filter(k => k <= kvC));
+  const kvHi = Math.min(...kvs.filter(k => k >= kvC));
+  const oslLo= Math.max(...osls.filter(o => o <= oslC));
+  const oslHi= Math.min(...osls.filter(o => o >= oslC));
+  const f11 = pts[`${kvLo},${oslLo}`], f12 = pts[`${kvLo},${oslHi}`];
+  const f21 = pts[`${kvHi},${oslLo}`], f22 = pts[`${kvHi},${oslHi}`];
+  const tx = kvHi  === kvLo  ? 0 : (kvC  - kvLo ) / (kvHi  - kvLo );
+  const ty = oslHi === oslLo ? 0 : (oslC - oslLo) / (oslHi - oslLo);
+  const raw = f11*(1-tx)*(1-ty) + f21*tx*(1-ty) + f12*(1-tx)*ty + f22*tx*ty;
+  return 1.0 + (raw - 1.0) * strength;
+}
+
+function anchorsFor(model, isl, osl, kv) {
+  if (model === 'glm-5.3-flash') {
+    const gates = P.GATES[isl] || P.GATES['25000'];
+    const kvs = Object.keys(gates).map(Number).sort((a,b)=>a-b);
+    const kvUse = kv >= kvs[kvs.length-1] ? kvs[kvs.length-1]
+                : kv <= kvs[0]            ? kvs[0]
+                : Math.max(...kvs.filter(k => k <= kv));
+    const tbl  = gates[String(kvUse)];
+    const osls = Object.keys(tbl).map(Number).sort((a,b)=>a-b);
+    const cap  = Math.min(osl, osls[osls.length-1]);
+    const anch = Math.max(...osls.filter(o => o <= cap));
+    const [it, ot] = tbl[String(anch)];
+    return { inA: it, outA: ot, gain: 1.0, note: 'measured' };
+  }
+  const a = P.ANCHOR[model];
+  const prior = P.KV_GAIN_MODEL_PRIOR[model];
+  const gain  = kvGainAt(kv, osl, 1.0 * prior);
+  return { inA: a.in_tps * gain, outA: a.out_tps * gain, gain,
+           note: `public anchor × ${gain.toFixed(2)} KV-gain (model-prior=${prior.toFixed(2)})` };
+}
+
+// ── widget wiring ───────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const wModel = $('w_model'), wGpu = $('w_gpu');
+for (const [k, lbl] of Object.entries(P.MODEL_LABELS)) {
+  const o = document.createElement('option'); o.value = k; o.textContent = lbl;
+  wModel.appendChild(o);
+}
+{
+  const o = document.createElement('option'); o.value='__all__'; o.textContent='all GPUs (scaled)';
+  wGpu.appendChild(o);
+  for (const g of P.GPU_LABELS) {
+    const o = document.createElement('option'); o.value=g; o.textContent=g.toUpperCase();
+    wGpu.appendChild(o);
+  }
+}
+
+let lastModel = null;
+function syncPrices() {
+  const m = wModel.value;
+  if (m !== lastModel) {
+    lastModel = m;
+    const pq = P.PRICES[m];
+    $('w_pin').value = pq.pin; $('w_pca').value = pq.pca; $('w_pou').value = pq.pou;
+  }
+}
+
+let sortKey = 'profit_total', sortDir = -1;
+document.querySelectorAll('#tbl thead th').forEach(th => {
+  th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (k === sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = -1; }
+    render();
+  });
+});
+
+const fmtUsd = (v, d=0) => (v==null||isNaN(v)) ? '—' : ('$' + Number(v).toLocaleString('en-US',{maximumFractionDigits:d, minimumFractionDigits:d}));
+const fmtSignUsd = (v, d=0) => (v==null||isNaN(v)) ? '—' : ((v>=0?'+':'−') + '$' + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:d, minimumFractionDigits:d}));
+
+function render() {
+  syncPrices();
+  const MODEL = wModel.value;
+  const ISL   = +$('w_isl').value;
+  const OSL   = +$('w_osl').value;
+  const KV    = +$('w_kv').value;
+  const N     = +$('w_fleet').value;
+  const DAYS  = +$('w_horizon').value;
+  const UTIL  = +$('w_util').value / 100;
+  const PRICE = {pin:+$('w_pin').value, pca:+$('w_pca').value, pou:+$('w_pou').value};
+  const SRC   = $('w_price').value;
+  $('v_util').textContent = Math.round(UTIL*100);
+
+  const hw = P.HW_SCALE[MODEL];
+  const sel = wGpu.value;
+  const { inA, outA, gain, note } = anchorsFor(MODEL, ISL, OSL, KV);
+  const k = KV / 100;
+  const revH = (inv, outv) => (inv*(1-k)*PRICE.pin + inv*k*PRICE.pca + outv*PRICE.pou) * 3600/1e6;
+  const revB300 = revH(inA, outA);
+
+  const hwLabel = (sel==='__all__')
+    ? 'all GPUs (each row scaled by its own hw_scale vs B300)'
+    : `only ${sel.toUpperCase()} · t/s ×${(hw[sel]??1).toFixed(3)}`;
+
+  let rows = P.OPTIONS.filter(r => SRC==='both' || r.price_src===SRC);
+  if (sel !== '__all__') rows = rows.filter(r => r.gpu_class === sel);
+  // de-dupe on (option_id, gpu_class, price_src) — pandas used drop_duplicates
+  const seen = new Set();
+  rows = rows.filter(r => {
+    const key = `${r.option_id}|${r.gpu_class}|${r.price_src}`;
+    if (seen.has(key)) return false; seen.add(key); return true;
+  });
+
+  const hours = DAYS * 24;
+  const out = [];
+  for (const r of rows) {
+    const scale = (sel==='__all__') ? (hw[r.gpu_class] ?? 1.0) : (hw[sel] ?? 1.0);
+    if (scale === 0) continue;                          // model can't run on this GPU
+    const revenue_ph = revH(inA * scale, outA * scale);
+    if (isNaN(revenue_ph)) continue;
+    const profit_ph    = revenue_ph * UTIL - r.eff_cost_ph;
+    const margin_pct   = revenue_ph * UTIL ? profit_ph / (revenue_ph * UTIL) * 100 : NaN;
+    const be_lower     = r.eff_cost_ph / revenue_ph;
+    out.push({
+      option_id: r.option_id, gpu_class: r.gpu_class, price_src: r.price_src,
+      listed_rate: r.listed_rate, hw_scale: scale,
+      revenue_ph, profit_ph, margin_pct, be_lower,
+      fresh_in_tps: inA * scale * (1-k),
+      cached_in_tps: inA * scale * k,
+      out_tps: outA * scale,
+      revenue_total: revenue_ph * UTIL * N * hours,
+      cost_total:    r.eff_cost_ph * N * hours,
+      profit_total:  profit_ph  * N * hours,
+    });
+  }
+
+  // sort
+  out.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'string') return sortDir * String(av).localeCompare(String(bv));
+    return sortDir * ((av ?? -Infinity) - (bv ?? -Infinity));
+  });
+
+  // header text
+  const official = P.PRICES[MODEL];
+  const isOfficial = Math.abs(PRICE.pin-official.pin)<1e-9 &&
+                     Math.abs(PRICE.pca-official.pca)<1e-9 &&
+                     Math.abs(PRICE.pou-official.pou)<1e-9;
+  $('hd').innerHTML =
+    `<strong>WORKLOAD</strong>  ${MODEL}  isl=${ISL.toLocaleString()}  osl=${OSL}  KV=${KV}%  ·  KV-gain ${gain.toFixed(2)}   [${note}]\n` +
+    `  B300 anchor: in ${inA.toLocaleString('en-US',{maximumFractionDigits:0})} t/s + out ${outA.toLocaleString('en-US',{maximumFractionDigits:1})} t/s = ${(inA+outA).toLocaleString('en-US',{maximumFractionDigits:0})} mixed t/s  (revenue ${fmtUsd(revB300,3)}/GPU·h on B300)\n` +
+    `  prices: fresh-in $${PRICE.pin}/1M · cached-in $${PRICE.pca}/1M · out $${PRICE.pou}/1M\n` +
+    `    · ${MODEL} rate card: fresh $${official.pin} · cached $${official.pca} · out $${official.pou} $/1M  [${isOfficial?'official':'OVERRIDDEN'}]\n` +
+    `  hardware: ${hwLabel}\n` +
+    `  fleet: ${N} GPU  ×  window: ${DAYS} days (${Math.round(hours)} h)  ×  utilisation ${(UTIL*100).toFixed(0)}%`;
+
+  // rows
+  const tb = $('tb'); tb.innerHTML = '';
+  for (const r of out) {
+    const tr = document.createElement('tr');
+    const cls = r.profit_total >= 0 ? 'pos' : 'neg';
+    const psz = r.price_src === 'my_quotes'
+      ? '<span class="psz my">my</span>' : '<span class="psz pub">pub</span>';
+    tr.innerHTML =
+      `<td class="l">${r.option_id}</td>` +
+      `<td class="l">${r.gpu_class.toUpperCase()}</td>` +
+      `<td class="l">${psz}</td>` +
+      `<td class="${cls}">${fmtSignUsd(r.profit_ph,3)}</td>` +
+      `<td>${isNaN(r.margin_pct)?'—':r.margin_pct.toFixed(1)+'%'}</td>` +
+      `<td>${fmtUsd(r.revenue_ph,3)}</td>` +
+      `<td class="${cls}">${fmtSignUsd(r.profit_total,0)}</td>` +
+      `<td>${fmtUsd(r.cost_total,0)}</td>` +
+      `<td>${fmtUsd(r.revenue_total,0)}</td>` +
+      `<td>${(r.be_lower*100).toFixed(1)}%</td>` +
+      `<td>${fmtUsd(r.listed_rate,2)}</td>` +
+      `<td>${r.hw_scale.toFixed(3)}</td>` +
+      `<td>${Math.round(r.fresh_in_tps).toLocaleString()}</td>` +
+      `<td>${Math.round(r.cached_in_tps).toLocaleString()}</td>` +
+      `<td>${r.out_tps.toFixed(1)}</td>`;
+    tb.appendChild(tr);
+  }
+  $('ft').textContent = out.length
+    ? `${out.length} offers · sorted by ${document.querySelector(`th[data-k="${sortKey}"]`).textContent} (${sortDir===-1?'desc':'asc'}) · click any column to re-sort`
+    : 'no rows for this combination';
+}
+
+['w_model','w_isl','w_osl','w_kv','w_pin','w_pca','w_pou','w_gpu','w_price','w_fleet','w_horizon','w_util']
+  .forEach(id => $(id).addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU × LLM Hosting Economics — share pack</title>
+<style>
+  :root { --ink:#0f172a; --ink-2:#475569; --ink-3:#64748b; --line:#e2e8f0;
+          --surface:#fff; --surface-2:#f8fafc; --accent:#0ea5e9; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:0; background:#f1f5f9; color:var(--ink);
+         font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:880px; margin:32px auto; padding:0 20px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:700; letter-spacing:-0.01em; }
+  .sub { color:var(--ink-3); font-size:12.5px; margin-bottom:24px; }
+  .card { display:block; background:var(--surface); border:1px solid var(--line);
+          border-radius:10px; padding:16px 18px; margin-bottom:12px;
+          text-decoration:none; color:var(--ink); transition:border-color .12s, box-shadow .12s; }
+  .card:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(14,165,233,.15) }
+  .card h2 { margin:0 0 4px; font-size:15px; color:var(--ink); }
+  .card p  { margin:0; font-size:12.5px; color:var(--ink-2); }
+  .card .swatch { display:inline-block; width:8px; height:8px; border-radius:2px;
+                  background:var(--accent); margin-right:8px; }
+</style></head>
+<body><div class="wrap">
+  <h1>GPU × LLM Hosting Economics</h1>
+  <div class="sub">Self-contained HTML mirrors of <code>GPU-LLM-v2-Analytics.ipynb</code> — no Python or Colab needed.<br>
+  All data is embedded in each file; double-click to open in any browser.</div>
+
+  <a class="card" href="GPU-LLM-Fleet.html">
+    <h2><span class="swatch"></span>§0b · Fleet &amp; Cost</h2>
+    <p>KPI cards · per-host occupancy (one square per GPU) · money-in/out waterfall · contract expiry table · full detail table.<br>
+    Sliders for internal occupancy, input boxes for per-customer monthly revenue.</p></a>
+
+  <a class="card" href="GPU-LLM-Calculator.html">
+    <h2><span class="swatch"></span>§1 · Live calculator</h2>
+    <p>Pick model / workload / KV hit / hardware → see ranked offers, $/GPU·h revenue, profit, break-even utilisation.<br>
+    Per-GPU scaling against measured B300 anchors; full price-grid coverage (118 offers).</p></a>
+
+  <a class="card" href="GPU-LLM-Recommend.html">
+    <h2><span class="swatch"></span>§2 · Recommendation panel</h2>
+    <p>Three views: aggregate across all 5 models · per-model with suggested token prices per class · mine-vs-public margin edge.<br>
+    Sortable table, workload dropdown for agentic / chat mixes.</p></a>
+
+  <a class="card" href="GPU-LLM-Reference.html">
+    <h2><span class="swatch"></span>Appendix · Reference tables</h2>
+    <p>A1 GPU prices (my quotes × public market) · A2 my B300 benchmark × InferenceX · A3 InferenceX all-model anchors · A4 OpenRouter weekly top-5 by month.<br>
+    Pure tables of record — read-only.</p></a>
+
+  <div class="sub" style="margin-top:24px">Built from <code>v2/share_html/build_*.py</code>. Regenerate after updating any CSV.</div>
+</div></body></html>
